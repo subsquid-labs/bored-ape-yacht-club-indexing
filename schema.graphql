@@ -25,7 +25,7 @@ type Transfer @entity {
   token: Token!
   from: Owner
   to: Owner
-  timestamp: BigInt!
+  timestamp: DateTime! @index
   block: Int! @index
   transactionHash: String!
 }

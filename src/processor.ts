@@ -51,29 +51,29 @@ const processor = new EvmBatchProcessor()
 
 
 processor.run(new TypeormDatabase(), async (ctx) => {
-  const ensDataArr: ENSData[] = [];
+  const baycDataArr: BAYCData[] = [];
   
   for (let c of ctx.blocks) {
     for (let i of c.items) {
       if (i.address === contractAddress && i.kind === "evmLog") {
         if (i.evmLog.topics[0] === events.Transfer.topic) {
-          const ensData = handleTransfer({
+          const baycData = handleTransfer({
             ...ctx,
             block: c.header,
             ...i,
           });
-          ensDataArr.push(ensData);
+          baycDataArr.push(baycData);
         }
       }
     }
   }
 
-  await saveENSData(
+  await saveBAYCData(
     {
       ...ctx,
       block: ctx.blocks[ctx.blocks.length - 1].header,
     },
-    ensDataArr
+    baycDataArr
   );
 });
 
@@ -109,12 +109,12 @@ export async function getOrCreateContractEntity(
   return contractEntity;
 }
 
-type ENSData = {
+type BAYCData = {
   id: string;
   from: string;
   to: string;
   tokenId: bigint;
-  timestamp: bigint;
+  timestamp: Date;
   block: number;
   transactionHash: string;
 };
@@ -125,36 +125,36 @@ function handleTransfer(
     Store,
     { evmLog: { topics: true; data: true }; transaction: { hash: true } }
   >
-): ENSData {
+): BAYCData {
   const { evmLog, block, transaction } = ctx;
 
   const { from, to, tokenId } = events.Transfer.decode(evmLog);
 
-  const ensData: ENSData = {
+  const baycData: BAYCData = {
     id: `${transaction.hash}-${evmLog.address}-${tokenId.toBigInt()}-${
       evmLog.index
     }`,
     from,
     to,
     tokenId: tokenId.toBigInt(),
-    timestamp: BigInt(block.timestamp),
+    timestamp: new Date(block.timestamp),
     block: block.height,
     transactionHash: transaction.hash,
   };
-  return ensData;
+  return baycData;
 }
 
-async function saveENSData(
+async function saveBAYCData(
   ctx: BlockHandlerContext<Store>,
-  ensDataArr: ENSData[]
+  baycDataArr: BAYCData[]
 ) {
   const tokensIds: Set<string> = new Set();
   const ownersIds: Set<string> = new Set();
 
-  for (const ensData of ensDataArr) {
-    tokensIds.add(ensData.tokenId.toString());
-    if (ensData.from) ownersIds.add(ensData.from.toLowerCase());
-    if (ensData.to) ownersIds.add(ensData.to.toLowerCase());
+  for (const baycData of baycDataArr) {
+    tokensIds.add(baycData.tokenId.toString());
+    if (baycData.from) ownersIds.add(baycData.from.toLowerCase());
+    if (baycData.to) ownersIds.add(baycData.to.toLowerCase());
   }
 
   const transfers: Set<Transfer> = new Set();
@@ -173,7 +173,7 @@ async function saveENSData(
     ])
   );
 
-  for (const ensData of ensDataArr) {
+  for (const baycData of baycDataArr) {
     const {
       id,
       tokenId,
@@ -182,7 +182,7 @@ async function saveENSData(
       block,
       transactionHash,
       timestamp,
-    } = ensData;
+    } = baycData;
 
     let fromOwner = owners.get(from);
     if (fromOwner == null) {
@@ -223,18 +223,18 @@ async function saveENSData(
     }
   }
 
-  const maxHeight = maxBy(ensDataArr, data => data.block)!.block;
+  const maxHeight = maxBy(baycDataArr, data => data.block)!.block;
 
   const multicall = new Multicall(ctx, {height: maxHeight}, multicallAddress);
 
-  ctx.log.info(`Calling multicall for ${ensDataArr.length} tokens...`);
+  ctx.log.info(`Calling multicall for ${baycDataArr.length} tokens...`);
 
-  const results = await multicall.tryAggregate(functions.tokenURI, ensDataArr.map(data => [contractAddress, [BigNumber.from(data.tokenId)]] as [string, BigNumber[]]), 100);
+  const results = await multicall.tryAggregate(functions.tokenURI, baycDataArr.map(data => [contractAddress, [BigNumber.from(data.tokenId)]] as [string, BigNumber[]]), 100);
 
   const tokensWithNoImage: string[] = [];
 
   results.forEach((res, i) => {
-    let t = tokens.get(ensDataArr[i].tokenId.toString());
+    let t = tokens.get(baycDataArr[i].tokenId.toString());
     if (t) {
       let uri = '';
       if (res.success) {

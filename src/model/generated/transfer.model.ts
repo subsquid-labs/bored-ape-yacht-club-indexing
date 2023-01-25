@@ -1,5 +1,4 @@
 import {Entity as Entity_, Column as Column_, PrimaryColumn as PrimaryColumn_, ManyToOne as ManyToOne_, Index as Index_} from "typeorm"
-import * as marshal from "./marshal"
 import {Token} from "./token.model"
 import {Owner} from "./owner.model"
 
@@ -24,8 +23,9 @@ export class Transfer {
     @ManyToOne_(() => Owner, {nullable: true})
     to!: Owner | undefined | null
 
-    @Column_("numeric", {transformer: marshal.bigintTransformer, nullable: false})
-    timestamp!: bigint
+    @Index_()
+    @Column_("timestamp with time zone", {nullable: false})
+    timestamp!: Date
 
     @Index_()
     @Column_("int4", {nullable: false})
